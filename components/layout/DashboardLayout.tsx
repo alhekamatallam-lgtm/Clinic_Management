@@ -1,9 +1,12 @@
-
 import React from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import { useApp } from '../../contexts/AppContext';
+import Toast from '../ui/Toast';
 
 const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { toast, hideToast } = useApp();
+
   return (
     <div className="flex h-screen bg-gray-100">
       <Sidebar />
@@ -13,6 +16,7 @@ const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
           {children}
         </main>
       </div>
+      {toast && <Toast message={toast.message} type={toast.type} onClose={hideToast} />}
     </div>
   );
 };

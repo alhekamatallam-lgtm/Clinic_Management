@@ -1,10 +1,13 @@
-
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import { Patient, Visit, Diagnosis, User, Clinic, Revenue, Role, View, VisitStatus, VisitType } from '../types';
 
 // The API URL provided by the user.
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzsewzqt9mr-OE411emksKT8cl6px4r-BQGfzodHfPVvP8UGbCv1hLDY6HplOnb9MDA/exec"; 
 
+interface ToastState {
+    message: string;
+    type: 'success' | 'error';
+}
 interface AppContextType {
     user: User | null;
     login: (username: string, password?: string) => boolean;
@@ -21,9 +24,13 @@ interface AppContextType {
     addVisit: (visit: Omit<Visit, 'visit_id' | 'visit_date' | 'queue_number' | 'status'>) => Promise<void>;
     addDiagnosis: (diagnosis: Omit<Diagnosis, 'diagnosis_id'>) => Promise<void>;
     addUser: (user: Omit<User, 'user_id'>) => Promise<void>;
+    updateUserPassword: (userId: number, password: string) => Promise<void>;
     updateVisitStatus: (visitId: number, status: VisitStatus) => void; 
     loading: boolean;
     error: string | null;
+    toast: ToastState | null;
+    showToast: (message: string, type?: 'success' | 'error') => void;
+    hideToast: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -53,12 +60,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // API states
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [toast, setToast] = useState<ToastState | null>(null);
+
+    // Toast notification functions
+    const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+        setToast({ message, type });
+    };
+
+    const hideToast = () => {
+        setToast(null);
+    };
+
 
     // Fetch initial data from Google Sheets API
     useEffect(() => {
         const fetchData = async () => {
-            // FIX: Removed the check for a placeholder URL as the SCRIPT_URL is already provided.
-            // This comparison was causing a TypeScript error because the two literal types have no overlap.
             try {
                 const response = await fetch(SCRIPT_URL);
                 if (!response.ok) {
@@ -85,15 +101,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         fetchData();
     }, []);
 
-    // Refactored postData to handle responses and errors correctly, and flatten the payload.
-    const postData = async (sheet: string, data: object) => {
-        const payload = { sheet, ...data };
+    // Refactored postData to handle a generic payload object.
+    const postData = async (payload: object) => {
         try {
             const response = await fetch(SCRIPT_URL, {
                 method: 'POST',
                 headers: {
-                    // Changed to text/plain to avoid CORS preflight (OPTIONS) request
-                    // which can be problematic with Google Apps Scripts.
                     'Content-Type': 'text/plain;charset=utf-8',
                 },
                 body: JSON.stringify(payload),
@@ -134,25 +147,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setCurrentView(view);
     };
 
-    // Refactored to update state after successful API call, not before.
     const addPatient = async (patientData: Omit<Patient, 'patient_id'>) => {
         const newPatientId = (patients.length > 0 ? Math.max(...patients.map(p => p.patient_id)) : 0) + 1;
         const newPatient: Patient = { ...patientData, patient_id: newPatientId };
         
         try {
-            const result = await postData('Patients', newPatient);
+            const result = await postData({ sheet: 'Patients', ...newPatient });
             if (result.success) {
                 setPatients(prev => [...prev, newPatient]);
+                showToast('تمت إضافة المريض بنجاح.', 'success');
             } else {
                 throw new Error(result.message || 'API returned an error while adding patient.');
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error("Failed to add patient:", e);
-            // Optionally: set an error state to show a message to the user.
+            showToast(`فشل في إضافة المريض: ${e.message}`, 'error');
         }
     };
 
-    // Refactored to be sequential and more robust.
     const addVisit = async (visitData: Omit<Visit, 'visit_id' | 'visit_date' | 'queue_number' | 'status'>) => {
         const today = new Date().toISOString().split('T')[0];
         const clinicVisitsToday = visits.filter(v => v.clinic_id === visitData.clinic_id && v.visit_date === today).length;
@@ -167,20 +179,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         };
         
         try {
-            const result = await postData('Visits', newVisit);
+            const result = await postData({ sheet: 'Visits', ...newVisit });
             if (result.success) {
                 setVisits(prev => [...prev, newVisit]);
-                // If visit is added successfully, automatically add revenue entry.
                 await addRevenueForVisit(newVisit);
+                showToast('تمت إضافة الزيارة بنجاح.', 'success');
             } else {
                  throw new Error(result.message || 'API returned an error while adding visit.');
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error("Failed to add visit:", e);
+            showToast(`فشل في إضافة الزيارة: ${e.message}`, 'error');
         }
     };
     
-    // Refactored to update state after successful API call.
     const addRevenueForVisit = async (visit: Visit) => {
         const patient = patients.find(p => p.patient_id === visit.patient_id);
         const clinic = clinics.find(c => c.clinic_id === visit.clinic_id);
@@ -203,51 +215,78 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         };
         
         try {
-            const result = await postData('Revenues', newRevenue);
-            if (result.success) {
-                setRevenues(prev => [...prev, newRevenue]);
-            } else {
+            const result = await postData({ sheet: 'Revenues', ...newRevenue });
+            if (!result.success) {
                 throw new Error(result.message || 'API returned an error while adding revenue.');
             }
-        } catch(e) {
+        } catch(e: any) {
             console.error("Failed to add revenue:", e);
+            showToast(`فشل في إضافة الإيراد: ${e.message}`, 'error');
         }
     };
 
-    // Refactored to update state after successful API call.
     const addDiagnosis = async (diagnosisData: Omit<Diagnosis, 'diagnosis_id'>) => {
         const newDiagnosisId = (diagnoses.length > 0 ? Math.max(...diagnoses.map(d => d.diagnosis_id)) : 0) + 1;
         const newDiagnosis: Diagnosis = { ...diagnosisData, diagnosis_id: newDiagnosisId };
 
         try {
-            const result = await postData('Diagnosis', newDiagnosis);
+            const result = await postData({ sheet: 'Diagnosis', ...newDiagnosis });
             if (result.success) {
                 setDiagnoses(prev => [...prev, newDiagnosis]);
                 updateVisitStatus(diagnosisData.visit_id, VisitStatus.Completed);
+                showToast('تم حفظ التشخيص بنجاح.', 'success');
             } else {
                 throw new Error(result.message || 'API returned an error while adding diagnosis.');
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error("Failed to add diagnosis:", e);
+            showToast(`فشل في حفظ التشخيص: ${e.message}`, 'error');
         }
     };
 
     const addUser = async (userData: Omit<User, 'user_id'>) => {
+        // Validation check for duplicate username (case-insensitive)
+        if (users.some(u => u.username.toLowerCase() === userData.username.toLowerCase())) {
+            showToast('اسم المستخدم موجود بالفعل. يرجى اختيار اسم آخر.', 'error');
+            return;
+        }
+
         const newUserId = (users.length > 0 ? Math.max(...users.map(u => u.user_id)) : 0) + 1;
         const newUser: User = { ...userData, user_id: newUserId };
 
         try {
-            const result = await postData('Users', newUser);
+            const result = await postData({ sheet: 'Users', ...newUser });
             if (result.success) {
                 setUsers(prev => [...prev, newUser]);
+                showToast('تم إضافة المستخدم بنجاح.', 'success');
             } else {
                 throw new Error(result.message || 'API returned an error while adding user.');
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error("Failed to add user:", e);
-            // Optionally: set an error state to show a message to the user.
+            showToast(`فشل في إضافة المستخدم: ${e.message}`, 'error');
         }
     };
+    
+    const updateUserPassword = async (userId: number, password: string) => {
+        try {
+            const result = await postData({
+                sheet: 'Users',
+                action: 'updatePassword',
+                user_id: userId,
+                password: password,
+            });
+            if (result.success) {
+                showToast('تم تغيير كلمة المرور بنجاح.', 'success');
+            } else {
+                throw new Error(result.message || 'API returned an error while updating password.');
+            }
+        } catch (e: any) {
+            console.error("Failed to update password:", e);
+            showToast(`فشل في تحديث كلمة المرور: ${e.message}`, 'error');
+        }
+    };
+
 
     const updateVisitStatus = (visitId: number, status: VisitStatus) => {
         setVisits(prevVisits =>
@@ -259,8 +298,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const value = {
         user, login, logout, currentView, setView,
         patients, visits, diagnoses, users, clinics, revenues,
-        addPatient, addVisit, addDiagnosis, addUser, updateVisitStatus,
-        loading, error
+        addPatient, addVisit, addDiagnosis, addUser, updateUserPassword, updateVisitStatus,
+        loading, error,
+        toast, showToast, hideToast
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
