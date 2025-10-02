@@ -1,10 +1,9 @@
-
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { VisitStatus } from '../types';
+import { VisitStatus, Role } from '../types';
 
 const Visits: React.FC = () => {
-    const { visits, patients, clinics } = useApp();
+    const { user, visits, patients, clinics } = useApp();
 
     const getPatientName = (id: number) => patients.find(p => p.patient_id === id)?.name || 'N/A';
     const getClinicName = (id: number) => clinics.find(c => c.clinic_id === id)?.clinic_name || 'N/A';
@@ -18,6 +17,13 @@ const Visits: React.FC = () => {
             default: return 'bg-gray-200 text-gray-800';
         }
     }
+
+    const filteredVisits = useMemo(() => {
+        if (user?.role === Role.Doctor && user.clinic) {
+            return visits.filter(visit => visit.clinic_id === user.clinic);
+        }
+        return visits;
+    }, [user, visits]);
 
     return (
         <div className="bg-white p-6 rounded-xl shadow-md">
@@ -36,7 +42,7 @@ const Visits: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                        {visits.map(visit => (
+                        {filteredVisits.map(visit => (
                             <tr key={visit.visit_id} className="hover:bg-gray-50">
                                 <td className="p-3 text-sm text-gray-700">{visit.visit_id}</td>
                                 <td className="p-3 text-sm text-gray-700 font-medium">{getPatientName(visit.patient_id)}</td>

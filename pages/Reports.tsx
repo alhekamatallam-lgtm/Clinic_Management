@@ -1,11 +1,18 @@
-
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
+import { Role } from '../types';
 
 const Reports: React.FC = () => {
-    const { revenues, clinics } = useApp();
+    const { user, revenues, clinics } = useApp();
     
     const getClinicName = (id: number) => clinics.find(c => c.clinic_id === id)?.clinic_name || 'N/A';
+
+    const filteredRevenues = useMemo(() => {
+        if (user?.role === Role.Doctor && user.clinic) {
+            return revenues.filter(revenue => revenue.clinic_id === user.clinic);
+        }
+        return revenues; // For Manager
+    }, [user, revenues]);
 
     return (
         <div className="bg-white p-6 rounded-xl shadow-md">
@@ -23,7 +30,7 @@ const Reports: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                        {revenues.map(revenue => (
+                        {filteredRevenues.map(revenue => (
                             <tr key={revenue.revenue_id} className="hover:bg-gray-50">
                                 <td className="p-3 text-sm text-gray-700">{revenue.revenue_id}</td>
                                 <td className="p-3 text-sm text-gray-700">{revenue.patient_name}</td>

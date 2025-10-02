@@ -83,22 +83,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         fetchData();
     }, []);
 
-    // Refactored postData to handle responses and errors correctly.
+    // Refactored postData to handle responses and errors correctly, and flatten the payload.
     const postData = async (sheet: string, data: object) => {
-        const response = await fetch(SCRIPT_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ sheet, data }),
-        });
-        
-        if (!response.ok) {
-            throw new Error(`API call failed: ${response.status} - ${response.statusText}`);
-        }
+        const payload = { sheet, ...data };
+        try {
+            const response = await fetch(SCRIPT_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text().catch(() => 'Could not read error text from response.');
+                throw new Error(`API call failed: ${response.status} - ${response.statusText}. Details: ${errorText}`);
+            }
 
-        const result = await response.json();
-        return result;
+            const result = await response.json();
+            return result;
+        } catch (error) {
+            console.error("Error posting data:", error);
+            throw error; // Re-throw to be handled by the caller
+        }
     };
 
 
