@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { VisitStatus, Diagnosis } from '../../types';
@@ -26,13 +25,13 @@ const DoctorDashboard: React.FC = () => {
     const today = new Date().toISOString().split('T')[0];
     const doctorClinicId = user.clinic;
 
-    const myVisitsToday = visits.filter(v => v.clinic_id === doctorClinicId && v.visit_date === today)
+    const myVisitsToday = visits.filter(v => Number(v.clinic_id) === doctorClinicId && v.visit_date === today)
         .sort((a,b) => a.queue_number - b.queue_number);
 
     const completedVisitsCount = myVisitsToday.filter(v => v.status === VisitStatus.Completed).length;
     
     const todaysRevenue = revenues
-        .filter(r => r.clinic_id === doctorClinicId && r.date === today)
+        .filter(r => Number(r.clinic_id) === doctorClinicId && r.date === today)
         .reduce((sum, r) => sum + r.amount, 0);
 
     const openDiagnosisModal = (visitId: number) => {

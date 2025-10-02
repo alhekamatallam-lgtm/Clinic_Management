@@ -1,3 +1,4 @@
+
 import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
 import { Patient, Visit, Diagnosis, User, Clinic, Revenue, Role, View, VisitStatus, VisitType } from '../types';
 
@@ -19,6 +20,7 @@ interface AppContextType {
     addPatient: (patient: Omit<Patient, 'patient_id'>) => Promise<void>;
     addVisit: (visit: Omit<Visit, 'visit_id' | 'visit_date' | 'queue_number' | 'status'>) => Promise<void>;
     addDiagnosis: (diagnosis: Omit<Diagnosis, 'diagnosis_id'>) => Promise<void>;
+    addUser: (user: Omit<User, 'user_id'>) => Promise<void>;
     updateVisitStatus: (visitId: number, status: VisitStatus) => void; 
     loading: boolean;
     error: string | null;
@@ -90,7 +92,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const response = await fetch(SCRIPT_URL, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
+                    // Changed to text/plain to avoid CORS preflight (OPTIONS) request
+                    // which can be problematic with Google Apps Scripts.
+                    'Content-Type': 'text/plain;charset=utf-8',
                 },
                 body: JSON.stringify(payload),
             });
@@ -228,6 +232,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
     };
 
+    const addUser = async (userData: Omit<User, 'user_id'>) => {
+        const newUserId = (users.length > 0 ? Math.max(...users.map(u => u.user_id)) : 0) + 1;
+        const newUser: User = { ...userData, user_id: newUserId };
+
+        try {
+            const result = await postData('Users', newUser);
+            if (result.success) {
+                setUsers(prev => [...prev, newUser]);
+            } else {
+                throw new Error(result.message || 'API returned an error while adding user.');
+            }
+        } catch (e) {
+            console.error("Failed to add user:", e);
+            // Optionally: set an error state to show a message to the user.
+        }
+    };
+
     const updateVisitStatus = (visitId: number, status: VisitStatus) => {
         setVisits(prevVisits =>
             prevVisits.map(v => v.visit_id === visitId ? { ...v, status } : v)
@@ -238,7 +259,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const value = {
         user, login, logout, currentView, setView,
         patients, visits, diagnoses, users, clinics, revenues,
-        addPatient, addVisit, addDiagnosis, updateVisitStatus,
+        addPatient, addVisit, addDiagnosis, addUser, updateVisitStatus,
         loading, error
     };
 
