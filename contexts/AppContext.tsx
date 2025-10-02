@@ -27,7 +27,17 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-    const [user, setUser] = useState<User | null>(null);
+    // Initialize user state from localStorage to persist session
+    const [user, setUser] = useState<User | null>(() => {
+        try {
+            const storedUser = localStorage.getItem('clinicUser');
+            return storedUser ? JSON.parse(storedUser) : null;
+        } catch (error) {
+            console.error('Failed to parse user from localStorage', error);
+            return null;
+        }
+    });
+
     const [currentView, setCurrentView] = useState<View>('dashboard');
     
     // Data states
@@ -95,7 +105,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const login = (username: string, password?: string): boolean => {
         const foundUser = users.find(u => u.username === username && u.password === password);
         if (foundUser) {
-            setUser(foundUser);
+            const { password, ...userToStore } = foundUser; // Exclude password from stored object
+            setUser(userToStore);
+            localStorage.setItem('clinicUser', JSON.stringify(userToStore));
             setView('dashboard');
             return true;
         }
@@ -104,6 +116,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const logout = () => {
         setUser(null);
+        localStorage.removeItem('clinicUser');
     };
 
     const setView = (view: View) => {
